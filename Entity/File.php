@@ -14,6 +14,7 @@ use Symfony\Component\HttpFoundation\ResponseHeaderBag;
  * Tom32i\FileBundle\Entity\File
  *
  * @ORM\MappedSuperclass
+ * @ORM\HasLifecycleCallbacks()
  */
 abstract class File
 {
@@ -212,7 +213,6 @@ abstract class File
         
         return null;
     }
-
 
     /**
      * @ORM\PostPersist()
