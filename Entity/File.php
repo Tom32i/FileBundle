@@ -215,8 +215,8 @@ abstract class File
     }
 
     /**
-     * @ORM\PostPersist()
-     * @ORM\PostUpdate()
+     * @ORM\PrePersist()
+     * @ORM\PreUpdate()
      */
     public function upload($path = null, $name = null, $patern = null)
     {
