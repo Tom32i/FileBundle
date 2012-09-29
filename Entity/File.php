@@ -416,7 +416,7 @@ abstract class File
     public function getImageFile($absolute, $patern = null)
     {
         if($this->type != self::TYPE_IMAGE){
-            return;
+            return array();
         }
         
         if(!empty($patern))
@@ -424,7 +424,7 @@ abstract class File
             $options = $this->getPaternOptions($patern);
 
             if($options === null){
-                return;
+                return array();
             }
         }
         
@@ -439,7 +439,7 @@ abstract class File
         
         if(!file_exists($original_path . '/' . $filename))
         {
-            return false;
+            return array();
         }
         
         if(!file_exists($file))
