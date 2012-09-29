@@ -54,198 +54,51 @@ abstract class File
     public $file;
     
     protected $paterns;
+    protected $keep_full_image = false;
+
+    private $ext;
+    private $secured_name;
+
+    /* META */
     
-    /**
-     * Get id
-     *
-     * @return integer 
-     */
-    public function getId()
+    public function __toString()
     {
-        return $this->id;
+        return $this->getWebPath();
     }
 
-    /**
-     * Set name
-     *
-     * @param string $name
-     */
-    public function setName($name)
-    {
-        $this->name = $name;
-    }
-
-    /**
-     * Get name
-     *
-     * @return string 
-     */
-    public function getName()
-    {
-        return $this->name;
-    }
-
-    /**
-     * Set path
-     *
-     * @param string $path
-     */
-    public function setPath($path)
-    {
-        $this->path = $path;
-    }
-
-    /**
-     * Get path
-     *
-     * @return string 
-     */
-    public function getPath()
-    {
-        return $this->path;
-    }
-
-    /**
-     * Set type
-     *
-     * @param smallint $type
-     */
-    public function setType($type)
-    {
-        $this->type = $type;
-    }
-    
-    public function selectType($type)
-    {
-        $this->type = self::getTypeId($type);
-    }
-
-    /**
-     * Get type
-     *
-     * @return smallint 
-     */
-    public function getType()
-    {
-        return $this->type;
-    }
-
-    /**
-     * Set filename
-     *
-     * @param string $filename
-     */
-    public function setFilename($filename)
-    {
-        $this->filename = $filename;
-    }
-
-    /**
-     * Get filename
-     *
-     * @return string 
-     */
-    public function getFilename()
-    {
-        return $this->filename;
-    }
-    
-    
-    /* Methods */
-    
-    public static function getTypeName($type_id)
-    {
-        switch ($type_id)
-        {
-            case self::TYPE_IMAGE:   return 'image';
-            break;
-        
-            default:   return 'file';
-            break;
-        }
-    }
-    
-    public static function getTypeId($type_name)
-    {
-        switch (strtolower($type_name))
-        {
-            case 'jpg':
-            case 'jpeg':
-            case 'png':
-            case 'gif':
-            case 'image':   
-                return self::TYPE_IMAGE;
-            break;
-            default:   
-                return self::TYPE_FILE;
-            break;
-        }
-    }
-    
-    public function getAbsolutePath()
-    {
-        return $this->getUploadRootDir().(empty($this->path) ? '' : '/'.$this->path).'/'.$this->filename;
-    }
-
-    public function getWebPath()
-    {
-        return '/'.$this->getUploadDir().(empty($this->path) ? '' : '/'.$this->path).'/'.$this->filename;
-    }
-
-    protected function getUploadRootDir()
-    {
-        // the absolute directory path where uploaded documents should be saved
-        return __DIR__.'/../../../../web/'.$this->getUploadDir();
-    }
-
-    protected function getUploadDir()
-    {
-        // get rid of the __DIR__ so it doesn't screw when displaying uploaded doc/image in the view.
-        return 'uploads';
-    }
-    
-    protected function getPaternOptions($patern)
-    {
-        if(array_key_exists($patern, $this->paterns))
-        {
-            return $this->paterns[$patern];
-        }
-        
-        return null;
-    }
+    /* EVENTS */
 
     /**
      * @ORM\PrePersist()
      * @ORM\PreUpdate()
      */
-    public function upload($path = null, $name = null, $patern = null)
+    public function upload()
     {
         // the file property can be empty if the field is not required
         if (null === $this->file) {
             return;
         }
         
-        if(!empty($path))
-        {
-            $this->path = $path;
-        }
-        
-        $ext = strtolower($this->file->guessExtension());
-        if($ext == 'jpeg'){ $ext = 'jpg'; }
+        $this->detectPath();
+        $this->detectExtension();
+        $this->detectType();
+        $this->detectFileName();
 
-        $this->type = self::getTypeId($ext);
-        $path = $this->getUploadRootDir().(empty($this->path) ? '' : '/'.$this->path);
-        
-        $name = empty($name) ? self::getTypeName($this->type).'_'.uniqid() : self::secure($name, $ext, $path);
-        $this->filename = $name.'.'.$ext;
+        var_dump($this->path);
+        var_dump($this->ext);
+        var_dump($this->type);
+        var_dump($this->name);
+        var_dump($this->secured_name);
+        var_dump($this->filename);
+        var_dump($this->getAbsoluteDir());
         
         // move takes the target directory and then the target filename to move to
-        $this->file->move($path, $this->filename);
+        $this->file->move($this->getAbsoluteDir(), $this->filename);
 
         // clean up the file property as you won't need it anymore
         $this->file = null;
         
-        if(!empty($patern))
+        /*if(!empty($patern))
         {
             $resize_path = $this->getImageFile(true, $patern);
             $default_path = $path.'/'.$this->filename;
@@ -255,7 +108,7 @@ abstract class File
                 unlink($default_path);
                 copy($resize_path, $default_path);
             }
-        }
+        }*/
     }
 
     /**
@@ -273,12 +126,135 @@ abstract class File
             }
         }
     }
-    
-    public function __toString()
+
+    /* METHODS */
+
+    protected function defaultPath()
     {
-        return $this->getWebPath();
+        return null;
+    }
+
+    protected function defaultName()
+    {
+        if($this->file)
+        {
+            return self::readName($this->file->getClientOriginalName());
+        }
+        else
+        {
+            return $this->getTypeName() . '_' . uniqid();
+        }
+    }
+
+    private function detectPath()
+    {
+        $this->path = $this->defaultPath();
+    }
+
+    private function detectExtension()
+    {
+        $this->ext = strtolower($this->file->guessExtension());
+        if($this->ext == 'jpeg'){ $this->ext = 'jpg'; }
+    }
+
+    private function detectName()
+    {
+        if(empty($this->name))
+        {
+            $this->name = $this->defaultName();
+        }
+
+        $this->secureName();
+    }
+
+    private function detectFileName()
+    {
+        $this->detectName();
+
+        $this->filename = $this->secured_name . '.' . $this->ext;
     }
     
+    private function detectType()
+    {
+        switch (strtolower($this->ext))
+        {
+            case 'jpg':
+            case 'jpeg':
+            case 'png':
+            case 'gif':
+
+                $this->type = self::TYPE_IMAGE;
+
+                break;
+
+            default:   
+
+                $this->type = self::TYPE_FILE;
+                
+                break;
+        }
+    }
+
+    private function getTypeName()
+    {
+        switch ($this->type)
+        {
+            case self::TYPE_IMAGE: 
+
+                return 'image';
+        
+            default:   
+
+                return 'file';
+        }
+    }
+
+    private function getAbsoluteDir()
+    {
+        return $this->getUploadRootDir() . (empty($this->path) ? '' : '/' . $this->path);
+    }
+
+    private function getWebDir()
+    {
+        return '/' . $this->getUploadDir() . (empty($this->path) ? '' : '/'.$this->path);
+    }
+    
+    public function getAbsolutePath()
+    {
+        return $this->getAbsoluteDir() . '/' . $this->filename;
+    }
+
+    public function getWebPath()
+    {
+        return $this->getWebDir() . '/' . $this->filename;
+    }
+
+    /**
+    *   The absolute directory path where uploaded documents should be saved
+    **/
+    protected function getUploadRootDir()
+    {
+        return __DIR__.'/../../../../web/'.$this->getUploadDir();
+    }
+
+    /**
+    *   The main upload directory
+    **/
+    protected function getUploadDir()
+    {
+        return 'uploads';
+    }
+    
+    private function getPaternOptions($patern)
+    {
+        if(array_key_exists($patern, $this->paterns))
+        {
+            return $this->paterns[$patern];
+        }
+        
+        return null;
+    }
+
     public function display($options = array())
     {
         if(is_string($options))
@@ -374,13 +350,13 @@ abstract class File
         
         $filename = $this->getFilename();    
         
-        $original_path = $this->getUploadRootDir().'/'.$this->path;
-        $patern_path = $original_path.(empty($patern) ? '' : '/'.$patern);
-        $file = $patern_path.'/'.$filename;
-        $ext = substr($filename, strrpos($filename,'.')+1);
+        $original_path = $this->getUploadRootDir() . '/' . $this->path;
+        $patern_path = $original_path.(empty($patern) ? '' : '/' . $patern);
+        $file = $patern_path . '/' . $filename;
+        $ext = self::readExt($filename);
         $create = false;
         
-        if(!file_exists($original_path.'/'.$filename))
+        if(!file_exists($original_path . '/' . $filename))
         {
             return false;
         }
@@ -415,7 +391,7 @@ abstract class File
         return $absolute ? $file : '/'.$this->getUploadDir().(empty($this->path) ? '' : '/'.$this->path).(empty($patern) ? '' : '/'.$patern).'/'.$filename;
     }
     
-    static public function processImage($file, $image, $options, $alpha = false)
+    static private function processImage($file, $image, $options, $alpha = false)
     {  
         $dst_x = 0;
         $dst_y = 0;
@@ -505,25 +481,24 @@ abstract class File
         return $thumb;
     }
     
-    private static function secure($name, $ext, $path)
+    private function secureName()
     {
-        $secured_name = strtolower($name);
-        
+        $secured_name = strtolower($this->name);
         $secured_name = preg_replace('#[^a-z0-9_.]#', '_', $secured_name);
         $secured_name = preg_replace('#__+#', '_', $secured_name);
         $secured_name = trim($secured_name, '_');
         
-        $complete_path = $path.'/'.$secured_name.'.'.$ext;
         $i = 2;
+        $complete_path = $this->path . '/' . $secured_name . '.' . $this->ext;
         
         while(file_exists($complete_path))
         {
-            $secured_name = $name.'_'.$i;
-            $complete_path = $path.'/'.$secured_name.'.'.$ext;
+            $secured_name = $this->name . '_' . $i;
+            $complete_path = $this->path . '/' . $secured_name . '.' . $this->ext;
             $i++;
         }
-        
-        return $secured_name;
+
+        $this->secured_name = $secured_name;
     }
 
     public function setFromUrl($url, $path = null, $filename = null)
@@ -550,7 +525,7 @@ abstract class File
         }
         
         $name = self::secure($name, $ext, $path);
-        $this->filename = $name.'.'.$ext;
+        $this->filename = $name . '.' . $ext;
 
         $ch = curl_init($url);
 
@@ -584,5 +559,107 @@ abstract class File
         }
 
         return true;
+    }
+
+    private static function readExt($filename)
+    {
+        return substr($filename, strrpos($filename,'.')+1);
+    }
+
+    private static function readName($filename)
+    {
+        return substr($filename, 0, strrpos($filename,'.'));
+    }
+
+    /* GETTERS / SETTERS */
+    
+    /**
+     * Get id
+     *
+     * @return integer 
+     */
+    public function getId()
+    {
+        return $this->id;
+    }
+
+    /**
+     * Set name
+     *
+     * @param string $name
+     */
+    public function setName($name)
+    {
+        $this->name = $name;
+    }
+
+    /**
+     * Get name
+     *
+     * @return string 
+     */
+    public function getName()
+    {
+        return $this->name;
+    }
+
+    /**
+     * Set path
+     *
+     * @param string $path
+     */
+    public function setPath($path)
+    {
+        $this->path = $path;
+    }
+
+    /**
+     * Get path
+     *
+     * @return string 
+     */
+    public function getPath()
+    {
+        return $this->path;
+    }
+
+    /**
+     * Set type
+     *
+     * @param smallint $type
+     */
+    public function setType($type)
+    {
+        $this->type = $type;
+    }
+
+    /**
+     * Get type
+     *
+     * @return smallint 
+     */
+    public function getType()
+    {
+        return $this->type;
+    }
+
+    /**
+     * Set filename
+     *
+     * @param string $filename
+     */
+    public function setFilename($filename)
+    {
+        $this->filename = $filename;
+    }
+
+    /**
+     * Get filename
+     *
+     * @return string 
+     */
+    public function getFilename()
+    {
+        return $this->filename;
     }
 }
