@@ -20,6 +20,10 @@ abstract class File
 {
     const TYPE_FILE = 0;
     const TYPE_IMAGE = 1;
+    const TYPE_DOC = 2;
+    const TYPE_PDF = 3;
+    const TYPE_EXCEL = 4;
+    const TYPE_ARCHIVE = 5;
 
     protected $id;
 
@@ -45,6 +49,13 @@ abstract class File
     protected $filename;
 
     /**
+     * @var datetime $created
+     *
+     * @ORM\Column(name="created", type="datetime")
+     */
+    protected $created;
+
+    /**
      * @var smallint $type
      *
      * @ORM\Column(name="type", type="smallint")
@@ -60,6 +71,11 @@ abstract class File
     private $secured_name;
 
     /* META */
+
+    public function __construct()
+    {
+        $this->created = new \DateTime();
+    }
     
     public function __toString()
     {
@@ -72,9 +88,8 @@ abstract class File
      * @ORM\PrePersist()
      * @ORM\PreUpdate()
      */
-    public function upload()
+    public function preUpload()
     {
-        // the file property can be empty if the field is not required
         if (null === $this->file) {
             return;
         }
@@ -83,12 +98,26 @@ abstract class File
         $this->detectExtension();
         $this->detectType();
         $this->detectFileName();
+    }
+
+    /**
+     * @ORM\PostPersist()
+     * @ORM\PostUpdate()
+     */
+    public function upload()
+    {
+        // the file property can be empty if the field is not required
+        if (null === $this->file) {
+            return;
+        }
         
         // move takes the target directory and then the target filename to move to
         $this->file->move($this->getAbsoluteDir(), $this->filename);
 
         // clean up the file property as you won't need it anymore
         $this->file = null;
+
+        $this->removePaterns();
         
         /*if(!empty($patern))
         {
@@ -110,6 +139,8 @@ abstract class File
     {
         if($this->filename)
         {
+            $this->removePaterns();
+
             $file = $this->getAbsolutePath();
 
             if (file_exists($file)) 
@@ -168,21 +199,40 @@ abstract class File
     
     private function detectType()
     {
-        switch (strtolower($this->ext))
+        switch ($this->ext) 
         {
             case 'jpg':
             case 'jpeg':
-            case 'png':
             case 'gif':
-
+            case 'png':
+            case 'bmp':
+            case 'tiff':
                 $this->type = self::TYPE_IMAGE;
-
                 break;
 
-            default:   
+            case 'doc':
+            case 'docx':
+                $this->type = self::TYPE_DOC;
+                break;
 
+            case 'pdf':
+                $this->type = self::TYPE_PDF;
+                break;
+
+            case 'xls':
+            case 'xlsx':
+                $this->type = self::TYPE_EXCEL;
+                break;
+
+            case 'zip':
+            case 'rar':
+            case 'tar':
+            case 'gz':
+                $this->type = self::TYPE_ARCHIVE;
+                break;
+            
+            default:
                 $this->type = self::TYPE_FILE;
-                
                 break;
         }
     }
@@ -191,34 +241,78 @@ abstract class File
     {
         switch ($this->type)
         {
-            case self::TYPE_IMAGE: 
+            case self::TYPE_IMAGE:
+                return "Image";
 
-                return 'image';
-        
-            default:   
+            case self::TYPE_DOC:
+                return "Word document";
 
-                return 'file';
+            case self::TYPE_PDF:
+                return "PDF Document";
+
+            case self::TYPE_EXCEL:
+                return "Excel document";
+
+            case self::TYPE_ARCHIVE:
+                return "Archive";
+
+            default: 
+                return "File";
         }
     }
 
-    private function getAbsoluteDir()
+    public static function getTypes()
     {
-        return $this->getUploadRootDir() . (empty($this->path) ? '' : '/' . $this->path);
+        return array(
+            self::TYPE_FILE,
+            self::TYPE_IMAGE,
+            self::TYPE_DOC,
+            self::TYPE_PDF,
+            self::TYPE_EXCEL,
+            self::TYPE_ARCHIVE,
+        );
     }
 
-    private function getWebDir()
+    public function removePaterns()
     {
-        return '/' . $this->getUploadDir() . (empty($this->path) ? '' : '/'.$this->path);
+        if($this->filename)
+        {
+            foreach ($this->paterns as $key => $value) 
+            {
+                $file = $this->getAbsolutePath($key);
+                $retina_file = self::retina($file);
+            
+                if (file_exists($file)) 
+                {
+                    unlink($file);
+                }
+
+                if (file_exists($retina_file)) 
+                {
+                    unlink($retina_file);
+                }
+            }
+        }
+    }
+
+    private function getAbsoluteDir($patern = null)
+    {
+        return $this->getUploadRootDir() . (empty($this->path) ? '' : '/' . $this->path) . (empty($patern) ? '' : '/' . $patern);
+    }
+
+    private function getWebDir($patern = null)
+    {
+        return '/' . $this->getUploadDir() . (empty($this->path) ? '' : '/'.$this->path) . (empty($patern) ? '' : '/' . $patern);
     }
     
-    public function getAbsolutePath()
+    public function getAbsolutePath($patern = null)
     {
-        return $this->getAbsoluteDir() . '/' . $this->filename;
+        return $this->getAbsoluteDir($patern) . '/' . $this->filename;
     }
 
-    public function getWebPath()
+    public function getWebPath($patern = null)
     {
-        return $this->getWebDir() . '/' . $this->filename;
+        return $this->getWebDir($patern) . '/' . $this->filename;
     }
 
     /**
@@ -241,6 +335,11 @@ abstract class File
     {
         if(array_key_exists($patern, $this->paterns))
         {
+            if(!array_key_exists('retina', $this->paterns[$patern]))
+            {
+                $this->paterns[$patern]['retina'] = true;
+            }
+
             return $this->paterns[$patern];
         }
         
@@ -254,22 +353,10 @@ abstract class File
             $options = array('patern' => $options);
         }
         
-        $html = "";
-        
-        if(!array_key_exists('title', $options) && !empty($this->name))
-        {
-            $options['title'] =  $this->name;
-        }
-        if(!array_key_exists('alt', $options))
-        {
-            $options['alt'] =  empty($this->name) ? $this->filename : $this->name;
-        }
-        
         switch($this->type)
         {
             case self::TYPE_IMAGE :
                 $patern = null;
-                $attr = '';
                 
                 if(array_key_exists('patern', $options))
                 {
@@ -282,37 +369,38 @@ abstract class File
                        
                        foreach($params as $p)
                        {
-                           $attr .= (array_key_exists($p, $patern_options) ? ' '.$p.'="'.$patern_options[$p].'"' : ''); 
+                           $options[$p] = array_key_exists($p, $patern_options) ? $patern_options[$p] : null; 
                        }
                     }
-                    unset($options['patern']);
                 }
                 
-                $path = $this->getImageFile(false, $patern);
+                $data = $this->getImageFile(false, $patern);
+
+                foreach ($data as $key => $value) 
+                {
+                    $options[$key] = $value;
+                }
+
+                $patern_options = $this->getPaternOptions($patern);
+                if($patern_options['retina'])
+                {
+                    $options['retina'] = self::retina($options['src']);
+                }
                 
                 if(array_key_exists('toggle', $options))
                 {
-                    $toggle = $options['toggle'];
-                    $toggle_path = $this->getImageFile(false, $toggle);
-                    $attr .= ' data-toggle="'.$toggle_path.'"';
-                    unset($options['toggle']);
+                    $options['toggle'] = $this->getImageFile(false, $options['toggle']);
                 }
-                
-                foreach($options as $key => $val)
-                {
-                    $attr .= ' '.$key.'="'.$val.'"'; 
-                }
-                
-                $html = '<img src="'.$path.'" '.$attr.' />';
             break;
         }
         
-        return $html;
+        return $options;
     }
     
     public function getImageContent($patern, $response)
     {
-        $file = $this->getImageFile(true, $patern);
+        $data = $this->getImageFile(true, $patern);
+        $file = $data['src'];
         
         $headers = array(
             'Content-Type' => 'image/'.substr($file, strrpos($file,'.')+1),
@@ -345,6 +433,7 @@ abstract class File
         $original_path = $this->getUploadRootDir() . '/' . $this->path;
         $patern_path = $original_path.(empty($patern) ? '' : '/' . $patern);
         $file = $patern_path . '/' . $filename;
+        $loadfile = $original_path . '/' . $filename;
         $ext = self::readExt($filename);
         $create = false;
         
@@ -361,30 +450,76 @@ abstract class File
             }
             
             $create = true;
-            $loadfile = $original_path.'/'.$filename;
+            $patern_options = $this->getPaternOptions($patern);
+            $patern_retina = false;
+
+            if($patern_options['retina'])
+            {
+                $patern_retina = $patern_options;
+                $file_retina = self::retina($file);
+
+                if(array_key_exists('width', $patern_retina))
+                {
+                    $patern_retina['width'] = $patern_retina['width'] * 2;
+                }
+
+                if(array_key_exists('height', $patern_retina))
+                {
+                    $patern_retina['height'] = $patern_retina['height'] * 2;
+                }
+            }
             
             switch($ext)
             {
-                case 'jpg':                   
-                    $image = $this::processImage($loadfile, imagecreatefromjpeg($loadfile), $this->getPaternOptions($patern));
-                    imagejpeg($image, $file, 100);
+                case 'jpg':    
+                    $image = $this::processImage($loadfile, imagecreatefromjpeg($loadfile), $patern_options);
+                    imagejpeg($image['thumb'], $file, 100);
+
+                    if($patern_retina)
+                    {
+                        $retina = $this::processImage($loadfile, imagecreatefromjpeg($loadfile), $patern_retina);
+                        imagejpeg($retina['thumb'], $file_retina, 100);
+                    }
                 break;
                 case 'png':      
-                    $image = $this::processImage($loadfile, imagecreatefrompng($loadfile), $this->getPaternOptions($patern), true);
-                    imagepng($image, $file, 9);
+                    $image = $this::processImage($loadfile, imagecreatefrompng($loadfile), $patern_options, true);
+                    imagepng($image['thumb'], $file, 9);
+
+                    if($patern_retina)
+                    {
+                        $retina = $this::processImage($loadfile, imagecreatefrompng($loadfile), $patern_retina);
+                        imagepng($retina['thumb'], $file_retina, 9);
+                    }
                 break;
                 case 'gif':  
-                    $image = $this::processImage($loadfile, imagecreatefromgif($loadfile), $this->getPaternOptions($patern));
-                    imagegif($image, $file);
+                    $image = $this::processImage($loadfile, imagecreatefromgif($loadfile), $patern_options);
+                    imagegif($image['thumb'], $file);
+
+                    if($patern_retina)
+                    {
+                        $retina = $this::processImage($loadfile, imagecreatefromgif($loadfile), $patern_retina);
+                        imagegif($retina['thumb'], $file_retina);
+                    }
                 break;
             }
         }
-        
-        return $absolute ? $file : '/'.$this->getUploadDir().(empty($this->path) ? '' : '/'.$this->path).(empty($patern) ? '' : '/'.$patern).'/'.$filename;
+
+        if(!isset($image))
+        {
+            $size = getimagesize($file);
+            $image = array('width' => $size[0], 'height' => $size[1]);
+        }
+
+        return array(
+            'src' => $absolute ? $file : $this->getWebDir($patern) . '/' . $filename,
+            'width' => $image['width'],
+            'height' => $image['height'],
+        );
     }
     
     static private function processImage($file, $image, $options, $alpha = false)
     {  
+        $data = array();
         $dst_x = 0;
         $dst_y = 0;
         $src_x = 0;
@@ -392,11 +527,15 @@ abstract class File
         
         $dst_width = array_key_exists('width', $options) ? $options['width'] : null;
         $dst_height = array_key_exists('height', $options) ? $options['height'] : null;
-        $method = array_key_exists('method', $options) ? $options['method'] : 'fill';
+        $method = array_key_exists('method', $options) ? $options['method'] : 'default';
+        $enlarge = array_key_exists('enlarge', $options) ? $options['enlarge'] : false;
         
         $datas = getimagesize($file);
         $src_width = $datas[0];
         $src_height = $datas[1];
+
+        $new_width = $src_width;
+        $new_height = $src_height;
         
         unset($datas);
         
@@ -404,7 +543,7 @@ abstract class File
         
         if($dst_width != null && $dst_height != null)
         {
-            $ratio_dst = $dst_width/$dst_height; 
+            $ratio_dst = $dst_width/$dst_height;
             
             if($ratio_src > $ratio_dst)
             {
@@ -413,14 +552,11 @@ abstract class File
                     $new_width = floor(($dst_height * $src_width) / $src_height);
                     $new_height = $dst_height;
                     $dst_x = floor(($dst_width - $new_width)/2);
-                    //var_dump($src_x);
-                    //exit();
                 }
-                else
+                elseif($src_width > $dst_width || $enlarge)
                 {
                     $new_width = $dst_width;
                     $new_height = floor(($dst_width * $src_height) / $src_width);
-                    $dst_y = floor(($dst_height - $new_height)/2);
                 }
             }
             elseif($ratio_src < $ratio_dst)
@@ -431,14 +567,13 @@ abstract class File
                     $new_height =  floor(($dst_width * $src_height) / $src_width);
                     $dst_y = floor(($dst_height - $new_height)/2);
                 }
-                else
+                elseif($src_height > $dst_height || $enlarge)
                 {
                     $new_width = floor(($dst_height * $src_width) / $src_height);
                     $new_height = $dst_height;
-                    $dst_x = floor(($dst_width - $new_width)/2);
                 }
             }
-            else
+            elseif($enlarge)
             {
                 $new_width = $dst_width;
                 $new_height = $dst_height;
@@ -446,20 +581,41 @@ abstract class File
         }
         elseif($dst_width === null)
         {
-            $new_height = $dst_height;
-            $new_width = floor(($dst_height * $src_width) / $src_height);
-            $dst_width = $new_width;
+            if($src_height > $dst_height || $enlarge)
+            {
+                $new_height = $dst_height;
+                $new_width = floor(($dst_height * $src_width) / $src_height);
+            }
         }
         elseif($dst_height === null)
         {
-            $new_width = $dst_width;
-            $new_height = floor(($dst_width * $src_height) / $src_width);
-            $dst_height = $new_height;
+            if($src_width > $dst_width || $enlarge)
+            {
+                $new_width = $dst_width;
+                $new_height = floor(($dst_width * $src_height) / $src_width);
+            }
         }
         
-        $thumb = imagecreatetruecolor($dst_width, $dst_height);
+        if($method == 'fill')
+        {
+            if(empty($dst_width)){ $dst_width = $new_width; }
+            if(empty($dst_height)){ $dst_height = $new_height; }
+
+            $thumb = imagecreatetruecolor($dst_width, $dst_height);
+
+            $data['width'] = $dst_width;
+            $data['height'] = $dst_height;
+        }
+        else
+        {
+            $thumb = imagecreatetruecolor($new_width, $new_height);
+            
+            $data['width'] = $new_width;
+            $data['height'] = $new_height;
+        }
         
-        if($alpha){
+        if($alpha)
+        {
             imagealphablending($thumb, false);
             imagesavealpha($thumb,true);
             $transparent = imagecolorallocatealpha($thumb, 255, 255, 255, 127);
@@ -470,7 +626,9 @@ abstract class File
         
         unset($image);
         
-        return $thumb;
+        $data['thumb'] = $thumb;
+
+        return $data;
     }
     
     private function secureName()
@@ -561,6 +719,11 @@ abstract class File
     private static function readName($filename)
     {
         return substr($filename, 0, strrpos($filename,'.'));
+    }
+
+    private static function retina($filename)
+    {
+        return self::readName($filename) . "@2x." . self::readExt($filename);
     }
 
     /* GETTERS / SETTERS */
