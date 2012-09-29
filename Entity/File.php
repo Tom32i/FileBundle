@@ -83,14 +83,6 @@ abstract class File
         $this->detectExtension();
         $this->detectType();
         $this->detectFileName();
-
-        var_dump($this->path);
-        var_dump($this->ext);
-        var_dump($this->type);
-        var_dump($this->name);
-        var_dump($this->secured_name);
-        var_dump($this->filename);
-        var_dump($this->getAbsoluteDir());
         
         // move takes the target directory and then the target filename to move to
         $this->file->move($this->getAbsoluteDir(), $this->filename);
