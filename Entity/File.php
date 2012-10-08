@@ -62,8 +62,7 @@ abstract class File
      */
     protected $type;
     
-    public $file;
-    
+    protected $file;
     protected $paterns;
     protected $keep_full_image = false;
 
@@ -809,12 +808,28 @@ abstract class File
     }
 
     /**
-     * Get filename
+     * Get file
      *
      * @return string 
      */
     public function getFilename()
     {
         return $this->filename;
+    }
+
+    /**
+     * Set file
+     */
+    public function setFile($file)
+    {
+        $this->file = $file;
+    }
+
+    /**
+     * Get file
+     */
+    public function getFile()
+    {
+        return $this->file;
     }
 }
