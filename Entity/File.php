@@ -808,7 +808,7 @@ abstract class File
     }
 
     /**
-     * Get file
+     * Get filename
      *
      * @return string 
      */
@@ -831,5 +831,28 @@ abstract class File
     public function getFile()
     {
         return $this->file;
+    }
+
+    /**
+     * Set created
+     *
+     * @param \DateTime $created
+     * @return Project
+     */
+    public function setCreated($created)
+    {
+        $this->created = $created;
+    
+        return $this;
+    }
+
+    /**
+     * Get created
+     *
+     * @return \DateTime 
+     */
+    public function getCreated()
+    {
+        return $this->created;
     }
 }
