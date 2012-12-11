@@ -381,9 +381,10 @@ abstract class File
                 }
 
                 $patern_options = $this->getPaternOptions($patern);
+                
                 if($patern_options['retina'])
                 {
-                    $options['retina'] = self::retina($options['src']);
+                    $options['retina'] = self::retina($data['src']);
                 }
                 
                 if(array_key_exists('toggle', $options))
