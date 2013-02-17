@@ -189,7 +189,7 @@ abstract class File
         $this->secureName();
     }
 
-    private function detectFileName()
+    protected function detectFileName()
     {
         $this->detectName();
 
